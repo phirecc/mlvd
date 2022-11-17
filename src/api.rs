@@ -6,7 +6,9 @@ use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::fs::File;
 use std::net;
+use std::time::{Duration, SystemTime};
 
 /// A Mullvad WireGuard VPN Server
 #[derive(Deserialize, Serialize, Debug)]
@@ -35,9 +37,23 @@ struct Wrapper {
     wireguard: Wireguard,
 }
 
+fn read_relays_from_cache(path: &str) -> Result<Relays> {
+    Ok(serde_json::from_str(
+        &fs::read_to_string(&path).with_context(|| format!("Failed reading {}", path))?,
+    )?)
+}
+
 /// Fetches a list of relays from Mullvad's API and returns them. Respects the API's `ETag` header.
 pub fn get_relays() -> Result<Relays> {
     let relays_path = MLVD_BASE_PATH.to_string() + "/relays.json";
+    let metadata = fs::metadata(&relays_path)
+        .with_context(|| format!("Failed to read metadata from {}", relays_path))?;
+    if let Ok(time) = metadata.modified() {
+        if SystemTime::now().duration_since(time).unwrap() < Duration::from_secs(900) {
+            info!("Using cached relay list");
+            return read_relays_from_cache(&relays_path);
+        }
+    }
     info!("Requesting relay list...");
     let resp = ureq::get("https://api.mullvad.net/app/v1/relays")
         .call()
@@ -50,10 +66,12 @@ pub fn get_relays() -> Result<Relays> {
         debug!("Response ETag: {:?}, stored ETag: {:?}", etag, stored_etag);
         if etag == stored_etag {
             info!("List hasn't changed");
-            return Ok(serde_json::from_str(
-                &fs::read_to_string(&relays_path)
-                    .with_context(|| format!("Failed reading {}", relays_path))?,
-            )?);
+            // Update modification date for cache
+            File::open(&relays_path)
+                .with_context(|| format!("Failed to open {}", relays_path))?
+                .set_modified(SystemTime::now())
+                .with_context(|| format!("Failed to set modification date of {}", relays_path))?;
+            return read_relays_from_cache(&relays_path);
         } else {
             fs::write(&etag_path, etag)
                 .with_context(|| format!("Failed to write {}", etag_path))?;
