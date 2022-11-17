@@ -61,8 +61,6 @@ pub fn get_relays() -> Result<Relays> {
     if let Some(etag) = resp.header("etag") {
         let etag_path = MLVD_BASE_PATH.to_string() + "/relays.etag";
         let stored_etag = fs::read_to_string(&etag_path).unwrap_or("".into());
-        // TODO On second run this would be true if an ETag was missing. It would then never update
-        // the relays list.
         debug!("Response ETag: {:?}, stored ETag: {:?}", etag, stored_etag);
         if etag == stored_etag {
             info!("List hasn't changed");
