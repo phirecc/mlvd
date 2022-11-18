@@ -14,7 +14,7 @@ impl Filter {
                 return false;
             }
         }
-        return true;
+        true
     }
 }
 
@@ -23,10 +23,10 @@ impl FromStr for Filter {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let rules: Result<Vec<Rule>, Self::Err> = s
-            .split(",")
+            .split(',')
             .map(|mut x| {
                 let exclude = x.starts_with('!');
-                if exclude || !exclude && x.starts_with("\\!") {
+                if exclude || x.starts_with("\\!") {
                     x = &x[1..]
                 }
                 let r = Regex::new(x)?;

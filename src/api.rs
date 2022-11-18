@@ -1,9 +1,6 @@
-use crate::filter::Filter;
 use crate::MLVD_BASE_PATH;
 use anyhow::{Context, Result};
 use log::{debug, info};
-use rand::distributions::WeightedIndex;
-use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::fs::File;
@@ -23,13 +20,9 @@ pub struct Relay {
     pub public_key: String,
 }
 
-/// A list of relays
-#[derive(Deserialize, Serialize, Debug)]
-pub struct Relays(pub Vec<Relay>);
-
 #[derive(Deserialize)]
 struct Wireguard {
-    relays: Relays,
+    relays: Vec<Relay>,
 }
 
 #[derive(Deserialize)]
@@ -37,15 +30,15 @@ struct Wrapper {
     wireguard: Wireguard,
 }
 
-fn read_relays_from_cache(path: &str) -> Result<Relays> {
+fn read_relays_from_cache(path: &str) -> Result<Vec<Relay>> {
     Ok(serde_json::from_str(
-        &fs::read_to_string(&path).with_context(|| format!("Failed reading {}", path))?,
+        &fs::read_to_string(path).with_context(|| format!("Failed reading {}", path))?,
     )?)
 }
 
-/// Fetches a list of relays from Mullvad's API and returns them. Respects the API's `ETag` header.
-pub fn get_relays() -> Result<Relays> {
-    let relays_path = MLVD_BASE_PATH.to_string() + "/relays.json";
+/// Fetches a list of relays from the cache or Mullvad's API and returns them
+pub fn get_relays() -> Result<Vec<Relay>> {
+    let relays_path = MLVD_BASE_PATH.to_owned() + "/relays.json";
     let metadata = fs::metadata(&relays_path)
         .with_context(|| format!("Failed to read metadata from {}", relays_path))?;
     if let Ok(time) = metadata.modified() {
@@ -60,7 +53,7 @@ pub fn get_relays() -> Result<Relays> {
         .context("Failed requesting relays from Mullvad API")?;
     if let Some(etag) = resp.header("etag") {
         let etag_path = MLVD_BASE_PATH.to_string() + "/relays.etag";
-        let stored_etag = fs::read_to_string(&etag_path).unwrap_or("".into());
+        let stored_etag = fs::read_to_string(&etag_path).unwrap_or_else(|_| "".into());
         debug!("Response ETag: {:?}, stored ETag: {:?}", etag, stored_etag);
         if etag == stored_etag {
             info!("List hasn't changed");
@@ -85,35 +78,4 @@ pub fn get_relays() -> Result<Relays> {
     fs::write(&relays_path, serde_json::to_string(&relays).unwrap())
         .with_context(|| format!("Failed to write {}", relays_path))?;
     Ok(relays)
-}
-impl Relays {
-    /// Exclude providers which don't match `filter`
-    pub fn filter_providers(mut self, filter: &Filter) -> Self {
-        self.0 = self
-            .0
-            .into_iter()
-            .filter(|x| filter.is_match(&x.provider))
-            .collect();
-        self
-    }
-    /// Exclude relays whose location and hostname doesn't match `filter`
-    pub fn filter_location_hostname(mut self, filter: &Filter) -> Self {
-        self.0 = self
-            .0
-            .into_iter()
-            .filter(|x| filter.is_match(&x.location) || filter.is_match(&x.hostname))
-            .collect();
-        self
-    }
-    /// Pick a random relay with hostname/location, taking into account the relay weights
-    pub fn pick(&self) -> Result<&Relay> {
-        let mut rng = rand::thread_rng();
-        let dist = WeightedIndex::new(self.0.iter().map(|x| x.weight))?;
-        Ok(&self.0[dist.sample(&mut rng)])
-    }
-    /// Filter out inactive relays
-    pub fn active(mut self) -> Relays {
-        self.0 = self.0.into_iter().filter(|x| x.active).collect();
-        self
-    }
 }

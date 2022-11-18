@@ -3,27 +3,38 @@ mod api;
 mod cli;
 mod filter;
 mod wireguard;
-use anyhow::Result;
-use api::Relays;
+use anyhow::{bail, Result};
+use api::Relay;
 use colored::*;
 use filter::Filter;
 use log::{debug, info};
+use rand::distributions::WeightedIndex;
+use rand::prelude::*;
 
 pub const MLVD_BASE_PATH: &str = "/var/lib/mlvd";
 
+/// Returns relays filtered by a location/hostname filter and a provider filter
 fn get_filtered_relays(
     lh_filter: Option<Filter>,
     provider_filter: Option<Filter>,
-) -> Result<Relays> {
-    let mut relays = api::get_relays()?;
+) -> Result<Box<dyn Iterator<Item = Relay>>> {
+    let relays = api::get_relays()?;
     debug!("Relays: {:?}", relays);
+    let mut iter: Box<dyn Iterator<Item = Relay>> = Box::new(relays.into_iter());
     if let Some(f) = lh_filter {
-        relays = relays.filter_location_hostname(&f);
+        iter = Box::new(iter.filter(move |x| f.is_match(&x.location) || f.is_match(&x.hostname)));
     }
     if let Some(f) = provider_filter {
-        relays = relays.filter_providers(&f);
+        iter = Box::new(iter.filter(move |x| f.is_match(&x.provider)));
     }
-    Ok(relays)
+    Ok(iter)
+}
+
+/// Pick a random relay with hostname/location, taking into account the relay weights
+fn pick(relays: &[Relay]) -> Result<&Relay> {
+    let mut rng = rand::thread_rng();
+    let dist = WeightedIndex::new(relays.iter().map(|x| x.weight))?;
+    Ok(&relays[dist.sample(&mut rng)])
 }
 
 fn main() -> Result<()> {
@@ -35,9 +46,19 @@ fn main() -> Result<()> {
     let config = cli::get_config();
     match config.subcommand {
         cli::Subcommand::Connect(args) => {
-            let relays = get_filtered_relays(Some(args.lh_filter), args.provider_filter)?.active();
-            info!("Found {} matching relays, picking one", relays.0.len());
-            let relay = relays.pick()?;
+            let relays: Vec<Relay> =
+                get_filtered_relays(Some(args.lh_filter), args.provider_filter)?
+                    .filter(|r| r.active)
+                    .collect();
+            let l = relays.len();
+            let relay = if l > 1 {
+                info!("Found {} matching relays, picking one", relays.len());
+                pick(&relays)?
+            } else if l == 0 {
+                bail!("No matching active relays found");
+            } else {
+                &relays[0]
+            };
             debug!("Chosen relay: {:?}", relay);
             info!(
                 "Connecting to {} ({}), hosted by {}",
@@ -63,7 +84,7 @@ fn main() -> Result<()> {
                 )
                 .bold()
             );
-            for relay in relays.0 {
+            for relay in relays {
                 let mut inactive = "";
                 if !relay.active {
                     inactive = "INACTIVE";
