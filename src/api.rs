@@ -1,5 +1,5 @@
 use crate::MLVD_BASE_PATH;
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -47,35 +47,36 @@ pub fn get_relays() -> Result<Vec<Relay>> {
             return read_relays_from_cache(&relays_path);
         }
     }
+    let etag_path = MLVD_BASE_PATH.to_string() + "/relays.etag";
+    let stored_etag = fs::read_to_string(&etag_path).unwrap_or_else(|_| "".into());
     info!("Requesting relay list...");
     let resp = ureq::get("https://api.mullvad.net/app/v1/relays")
+        .set("If-None-Match", &stored_etag)
         .call()
         .context("Failed requesting relays from Mullvad API")?;
-    if let Some(etag) = resp.header("etag") {
-        let etag_path = MLVD_BASE_PATH.to_string() + "/relays.etag";
-        let stored_etag = fs::read_to_string(&etag_path).unwrap_or_else(|_| "".into());
+    if resp.status() == 304 {
+        info!("List hasn't changed");
+        // Update modification date for cache
+        File::open(&relays_path)
+            .with_context(|| format!("Failed to open {}", relays_path))?
+            .set_modified(SystemTime::now())
+            .with_context(|| format!("Failed to set modification date of {}", relays_path))?;
+        read_relays_from_cache(&relays_path)
+    } else if resp.status() == 200 {
+        let etag = resp.header("etag").unwrap_or("");
         debug!("Response ETag: {:?}, stored ETag: {:?}", etag, stored_etag);
-        if etag == stored_etag {
-            info!("List hasn't changed");
-            // Update modification date for cache
-            File::open(&relays_path)
-                .with_context(|| format!("Failed to open {}", relays_path))?
-                .set_modified(SystemTime::now())
-                .with_context(|| format!("Failed to set modification date of {}", relays_path))?;
-            return read_relays_from_cache(&relays_path);
-        } else {
-            fs::write(&etag_path, etag)
-                .with_context(|| format!("Failed to write {}", etag_path))?;
-        }
+        fs::write(&etag_path, etag).with_context(|| format!("Failed to write {}", etag_path))?;
+        info!("Updating relay list");
+        let relays = resp
+            .into_json::<Wrapper>()
+            .context("Failed to parse API response into JSON")?
+            .wireguard
+            .relays;
+        // We messed up if `Relays` fails to serialize
+        fs::write(&relays_path, serde_json::to_string(&relays).unwrap())
+            .with_context(|| format!("Failed to write {}", relays_path))?;
+        Ok(relays)
+    } else {
+        bail!("Unexpected server response: {:?}", resp);
     }
-    info!("Updating relay list");
-    let relays = resp
-        .into_json::<Wrapper>()
-        .context("Failed to parse API response into JSON")?
-        .wireguard
-        .relays;
-    // We messed up if `Relays` fails to serialize
-    fs::write(&relays_path, serde_json::to_string(&relays).unwrap())
-        .with_context(|| format!("Failed to write {}", relays_path))?;
-    Ok(relays)
 }
