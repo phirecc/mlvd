@@ -1,5 +1,5 @@
 use crate::MLVD_BASE_PATH;
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Context, Error, Result};
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -39,12 +39,21 @@ fn read_relays_from_cache(path: &str) -> Result<Vec<Relay>> {
 /// Fetches a list of relays from the cache or Mullvad's API and returns them
 pub fn get_relays() -> Result<Vec<Relay>> {
     let relays_path = MLVD_BASE_PATH.to_owned() + "/relays.json";
-    let metadata = fs::metadata(&relays_path)
-        .with_context(|| format!("Failed to read metadata from {}", relays_path))?;
-    if let Ok(time) = metadata.modified() {
-        if SystemTime::now().duration_since(time).unwrap() < Duration::from_secs(900) {
-            info!("Using cached relay list");
-            return read_relays_from_cache(&relays_path);
+    match fs::metadata(&relays_path) {
+        Ok(m) => {
+            if let Ok(time) = m.modified() {
+                if SystemTime::now().duration_since(time).unwrap() < Duration::from_secs(900) {
+                    info!("Using cached relay list");
+                    return read_relays_from_cache(&relays_path);
+                }
+            }
+        }
+        Err(e) => {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                return Err(
+                    Error::new(e).context(format!("Failed to read metadata from {}", relays_path))
+                );
+            }
         }
     }
     let etag_path = MLVD_BASE_PATH.to_string() + "/relays.etag";
