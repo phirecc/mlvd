@@ -19,7 +19,7 @@ fn get_filtered_relays(
     provider_filter: Option<Filter>,
 ) -> Result<Box<dyn Iterator<Item = Relay>>> {
     let relays = api::get_relays()?;
-    debug!("Relays: {:?}", relays);
+    debug!("Relays: {:#?}", relays);
     let mut iter: Box<dyn Iterator<Item = Relay>> = Box::new(relays.into_iter());
     if let Some(f) = lh_filter {
         iter = Box::new(iter.filter(move |x| f.is_match(&x.location) || f.is_match(&x.hostname)));
@@ -42,6 +42,7 @@ fn main() -> Result<()> {
         .format_timestamp(None)
         .format_target(false)
         .filter_level(log::LevelFilter::Info)
+        .parse_default_env()
         .init();
     let config = cli::get_config();
     match config.subcommand {
@@ -59,7 +60,7 @@ fn main() -> Result<()> {
             } else {
                 &relays[0]
             };
-            debug!("Chosen relay: {:?}", relay);
+            debug!("Chosen relay: {:#?}", relay);
             info!(
                 "Connecting to {} ({}), hosted by {}",
                 relay.hostname.purple().bold(),
