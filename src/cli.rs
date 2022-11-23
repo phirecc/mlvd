@@ -10,7 +10,10 @@ pub enum Subcommand {
 }
 
 #[derive(FromArgs)]
-#[argh(subcommand, name = "connect")]
+#[argh(subcommand, name = "connect",
+       example = "mlvd connect de-fra",
+       example = "mlvd connect -p \"!(31173|M247|xtom)\" \"(de|nl|no)-\""
+       )]
 /// Connect to a relay
 pub struct ConnectArgs {
     #[argh(positional)]
@@ -27,7 +30,10 @@ pub struct ConnectArgs {
 pub struct DisconnectArgs {}
 
 #[derive(FromArgs)]
-#[argh(subcommand, name = "list-relays")]
+#[argh(subcommand, name = "list-relays",
+       example = "mlvd list-relays de-fra",
+       example = "mlvd list-relays -p \"!(31173|M247|xtom)\" \"(de|nl|no)-\""
+       )]
 /// List available relays
 pub struct ListRelaysArgs {
     #[argh(positional)]
@@ -39,6 +45,12 @@ pub struct ListRelaysArgs {
 }
 
 #[derive(FromArgs)]
+#[argh(note = "mlvd's files are in /var/lib/mlvd, edit template.conf to change WireGuard options
+
+HOW TO SETUP: Download a WireGuard config file from your account panel
+(https://mullvad.net/en/account/#/wireguard-config/) and copy
+its \"PrivateKey\" and \"Address\" values into /var/lib/mlvd/template.conf")]
+
 /// A minimal Mullvad WireGuard client
 pub struct Config {
     #[argh(subcommand)]
