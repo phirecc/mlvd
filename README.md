@@ -29,10 +29,11 @@ Dependencies:
 
 - wg-quick (wireguard-tools)
 - openresolv (for dns)
+- rustup (nightly rust)
 
 To install them on arch:
 ```
-sudo pacman -S --needed wireguard-tools openresolv
+sudo pacman -S --needed wireguard-tools openresolv cargo-nightly
 ```
 
 You can install `mlvd` manually like so:
