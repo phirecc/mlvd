@@ -80,7 +80,7 @@ fn main() -> Result<()> {
             println!(
                 "{}",
                 format!(
-                    "{:8} {:15} {:12} {:3} {:8}",
+                    "{:8} {:15} {:12} {:6} {:8}",
                     "Location", "Hostname", "Provider", "Weight", "Inactive"
                 )
                 .bold()
@@ -91,7 +91,7 @@ fn main() -> Result<()> {
                     inactive = "INACTIVE";
                 }
                 println!(
-                    "{:8} {:15} {:12} {:3} {:8}",
+                    "{:8} {:15} {:12} {:6} {:8}",
                     relay.location, relay.hostname, relay.provider, relay.weight, inactive
                 );
             }
