@@ -62,13 +62,15 @@ fn main() -> Result<()> {
             };
             debug!("Chosen relay: {:#?}", relay);
             info!(
-                "Connecting to {} ({}), hosted by {}",
+                "Using {} ({}), hosted by {}",
                 relay.hostname.purple().bold(),
                 relay.location.purple().bold(),
                 relay.provider.purple().bold()
             );
-            wireguard::connect(relay.ip, &relay.public_key)?;
-            info!("Connected successfully!");
+            wireguard::connect(relay.ip, &relay.public_key, args.dont_act)?;
+            if !args.dont_act {
+                info!("Connected successfully!");
+            }
         }
         cli::Subcommand::Disconnect(_) => {
             info!("Disconnecting...");

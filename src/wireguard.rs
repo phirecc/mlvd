@@ -7,12 +7,16 @@ use std::process::Command;
 use std::process::Stdio;
 
 /// Connects to a WireGuard server using `wg-quick` and a pre-defined template
-pub fn connect(ip: net::IpAddr, public_key: &str) -> Result<()> {
+pub fn connect(ip: net::IpAddr, public_key: &str, dont_act: bool) -> Result<()> {
     let template = fs::read_to_string(super::MLVD_BASE_PATH.to_owned() + "/template.conf")
         .context("Failed to read template.conf")?;
     let wg_conf = template
         .replace("SERVER_IP", &ip.to_string())
         .replace("SERVER_PUBKEY", public_key);
+    if dont_act {
+        println!("{}", wg_conf);
+        return Ok(())
+    }
     fs::write("/etc/wireguard/mlvd.conf", wg_conf).context("Failed to write mlvd.conf")?;
     if Path::new("/sys/class/net/mlvd").exists() {
         info!("Reusing mlvd interface");

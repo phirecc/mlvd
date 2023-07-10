@@ -22,6 +22,9 @@ pub struct ConnectArgs {
     #[argh(option, short = 'p')]
     /// the provider filter
     pub provider_filter: Option<Filter>,
+    #[argh(switch, short = 'n')]
+    /// don't connect, just print the resulting configuration
+    pub dont_act: bool,
 }
 
 #[derive(FromArgs)]
